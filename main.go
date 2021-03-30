@@ -1,52 +1,50 @@
 package main
 
 import (
+	"errors"
 	"fmt"
-
-	"github.com/kim-hyunjin/go-scraper/banking"
-	"github.com/kim-hyunjin/go-scraper/dict"
+	"net/http"
 )
 
+type result struct {
+	url string
+	status string
+}
+
+var requestFailed = errors.New("request failed.")
+
 func main() {
-	account := banking.NewAccount("hyunjin")
-	account.Deposit(5000)
-	fmt.Println(account.Owner(), account.Balance())
-	account.Withdraw(3000)
-	account.ChangeOwner("gildong")
-	fmt.Println(account.Owner(), account.Balance())
-	fmt.Println(account)
-	// err := account.Withdraw(3000)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	urls := []string{
+		"https://www.airbnb.com/",
+		"https://www.google.com",
+		"https://www.amazon.com/",
+		"https://www.reddit.com/",
+		"https://www.facebook.com/",
+		"https://www.instagram.com/",
+	}
+ 	results := make(map[string]string)
+	c := make(chan result)
+	for _, url := range urls {
+		go hitUrl(url, c)
+	}
 
-	dictionary := dict.Dictionary{"first": "First word"}
-	dictionary["hello"] = "hello"
-	definition, err := dictionary.Search("first")
-	if err != nil {
-		fmt.Println(err)
+	for i := 0; i < len(urls); i++ {
+		result := <-c
+		results[result.url] = result.status
+	}
+	
+	
+	for url, status := range results {
+		fmt.Println(url, status)
+	}
+}
+
+func hitUrl(url string, c chan<- result) {
+	fmt.Println("Checking, ", url)
+	resp, err := http.Get(url)
+	if err != nil || resp.StatusCode >= 400 {
+		c <- result{url: url, status: "FAILED"}
 	} else {
-		fmt.Println(definition)
-	}
-
-	err = dictionary.Add("hello2", "greeting")
-	if err != nil {
-		fmt.Println(err)
-	}
-	definition, err = dictionary.Search("hello2")
-	fmt.Println(definition)
-
-	err = dictionary.Update("hello2", "Hola!")
-	if err != nil {
-		fmt.Println(err)
-	}
-	definition, _ = dictionary.Search("hello2")
-	fmt.Println(definition)
-
-	dictionary.Delete("hello2")
-
-	err = dictionary.Update("hello2", "howdy!")
-	if err != nil {
-		fmt.Println(err)
+		c <- result{url: url, status: "OK"}
 	}
 }
