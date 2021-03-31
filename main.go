@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/csv"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -21,17 +23,17 @@ type extractedJob struct {
 var baseURL string = "https://kr.indeed.com/jobs?q=java&limit=50"
 
 func main() {
-	totalJobs := make([]extractedJob, 100)
+	var totalJobs []extractedJob
 	pages := getPages()
 	for i := 0; i < pages; i++ {
 		jobs := getJobsInPage(i)
 		totalJobs = append(totalJobs, jobs...)
 	}
-	fmt.Println(totalJobs)
+	writeJobsToCsv(totalJobs)
 }
 
 func getJobsInPage(page int) []extractedJob {
-	jobs := make([]extractedJob, 100)
+	var jobs []extractedJob
 	pageUrl := baseURL + "&start=" + strconv.Itoa(page * 50)
 	fmt.Println("Request " + pageUrl)
 	res, err := http.Get(pageUrl)
@@ -91,4 +93,22 @@ func extractJob(card *goquery.Selection) extractedJob {
 	summary := cleanString(card.Find(".summary").Text())
 	job := extractedJob{id: id, title: title, location: location, salary: salary, summary: summary}
 	return job
+}
+
+func writeJobsToCsv(jobs []extractedJob) {
+	file, err := os.Create("jobs.csv")
+	checkErr(err)
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	headers := []string{"ID", "Title", "Location", "Salary", "Summary"}
+	wErr := writer.Write(headers)
+	checkErr(wErr)
+
+	for _, job := range jobs {
+		jobSlice := []string{"https://kr.indeed.com/viewjob?jk=" + job.id, job.title, job.location, job.salary, job.summary}
+		jwErr := writer.Write(jobSlice)
+		checkErr(jwErr)
+	}
+
 }
