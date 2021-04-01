@@ -24,16 +24,23 @@ var baseURL string = "https://kr.indeed.com/jobs?q=java&limit=50"
 
 func main() {
 	var totalJobs []extractedJob
+	extractedJobsCh := make(chan []extractedJob)
 	pages := getPages()
 	for i := 0; i < pages; i++ {
-		jobs := getJobsInPage(i)
+		go getJobsInPage(i, extractedJobsCh)
+	}
+	for i := 0; i< pages; i++ {
+		jobs := <- extractedJobsCh
 		totalJobs = append(totalJobs, jobs...)
 	}
+
 	writeJobsToCsv(totalJobs)
+	fmt.Println("Done! ", len(totalJobs))
 }
 
-func getJobsInPage(page int) []extractedJob {
+func getJobsInPage(page int, done chan<- []extractedJob) {
 	var jobs []extractedJob
+	extractedJobCh := make(chan extractedJob)
 	pageUrl := baseURL + "&start=" + strconv.Itoa(page * 50)
 	fmt.Println("Request " + pageUrl)
 	res, err := http.Get(pageUrl)
@@ -45,11 +52,18 @@ func getJobsInPage(page int) []extractedJob {
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 	checkErr(err)
 
-	doc.Find(".jobsearch-SerpJobCard").Each(func(i int, card *goquery.Selection) {
-		job := extractJob(card)
-		jobs = append(jobs, job)
+	searchCards := doc.Find(".jobsearch-SerpJobCard")
+
+	searchCards.Each(func(i int, card *goquery.Selection) {
+		go extractJob(card, extractedJobCh)
 	})
-	return jobs
+
+	for i := 0; i < searchCards.Length(); i++ {
+		job := <- extractedJobCh
+		jobs = append(jobs, job)
+	}
+
+	done <- jobs
 }
 
 func getPages() int {
@@ -85,14 +99,13 @@ func cleanString(str string) string {
 	return strings.Join(strings.Fields(strings.TrimSpace(str)), " ")
 }
 
-func extractJob(card *goquery.Selection) extractedJob {
+func extractJob(card *goquery.Selection, done chan<- extractedJob) {
 	id, _ := card.Attr("data-jk")
 	title := cleanString(card.Find(".title>a").Text())
 	location := cleanString(card.Find(".sjcl").Text())
 	salary := cleanString(card.Find(".salaryText").Text())
 	summary := cleanString(card.Find(".summary").Text())
-	job := extractedJob{id: id, title: title, location: location, salary: salary, summary: summary}
-	return job
+	done <- extractedJob{id: id, title: title, location: location, salary: salary, summary: summary}
 }
 
 func writeJobsToCsv(jobs []extractedJob) {
